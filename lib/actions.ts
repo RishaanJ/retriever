@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { notifyPartRequested } from "./discord";
 import { getServerClient } from "./supabase";
 import type { Database } from "./database.types";
 import type { RequestPriority, RequestStatus } from "./queries";
@@ -146,17 +147,26 @@ export async function createRequest(form: FormData): Promise<ActionResult> {
   const priority = text(form, "priority").toLowerCase() as RequestPriority;
 
   const supabase = getServerClient();
-  const { error } = await supabase.from("part_requests").insert({
-    part_name: partName,
-    quantity: Math.max(1, count(form, "quantity", 1)),
-    priority: PRIORITIES.includes(priority) ? priority : "normal",
-    reason: text(form, "reason") || null,
-    requested_by: text(form, "requested_by") || null,
-  });
+  const { data, error } = await supabase
+    .from("part_requests")
+    .insert({
+      part_name: partName,
+      quantity: Math.max(1, count(form, "quantity", 1)),
+      priority: PRIORITIES.includes(priority) ? priority : "normal",
+      reason: text(form, "reason") || null,
+      requested_by: text(form, "requested_by") || null,
+    })
+    .select()
+    .single();
 
   if (error) {
     return { ok: false, error: error.message };
   }
+
+  // The request is already saved at this point. notifyPartRequested swallows
+  // its own failures so a Discord outage cannot turn a successful request
+  // into an error message for the person who filed it.
+  await notifyPartRequested(data);
 
   revalidatePath("/requests");
   revalidatePath("/");
