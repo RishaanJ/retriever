@@ -498,6 +498,15 @@ input:focus-visible {
   gap: 6px;
 }
 
+.inline-error {
+  align-items: center;
+  color: oklch(0.44 0.17 25);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 6px;
+}
+
 .add-location-form {
   align-items: end;
   display: grid;

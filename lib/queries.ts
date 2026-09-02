@@ -1,3 +1,5 @@
+import { connection } from "next/server";
+
 import { getServerClient } from "./supabase";
 import type { Database } from "./database.types";
 
@@ -19,6 +21,21 @@ export type PartRequest = Tables["part_requests"]["Row"];
 export type RequestStatus = Database["public"]["Enums"]["request_status"];
 export type RequestPriority = Database["public"]["Enums"]["request_priority"];
 
+/**
+ * Every read goes through here so no page can accidentally be prerendered
+ * with a frozen copy of the inventory.
+ *
+ * supabase-js does not use the fetch instance Next instruments, so Next sees
+ * a page that performs no requests, resolves the query during the build, and
+ * ships the result as static HTML. On shared workshop laptops that means one
+ * person adds a part and nobody else ever sees it. `connection()` stops
+ * prerendering at this point, so the query runs per request instead.
+ */
+async function client() {
+  await connection();
+  return getServerClient();
+}
+
 function unwrap<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
   if (result.error) {
     throw new Error(`${context}: ${result.error.message}`);
@@ -33,7 +50,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
  * the full inventory table.
  */
 export async function searchParts(query = ""): Promise<Part[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const result = await supabase.rpc("search_parts", { q: query });
   return unwrap(result, "Failed to search parts");
 }
@@ -43,7 +60,7 @@ export async function listParts(): Promise<Part[]> {
 }
 
 export async function getPart(id: string): Promise<Part | null> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const { data, error } = await supabase
     .from("parts_with_location")
     .select("*")
@@ -58,7 +75,7 @@ export async function getPart(id: string): Promise<Part | null> {
 
 /** The five storage areas with their part counts and structure summary. */
 export async function listStorageAreas(): Promise<StorageArea[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const result = await supabase
     .from("storage_area_summary")
     .select("*")
@@ -71,7 +88,7 @@ export async function listStorageAreas(): Promise<StorageArea[]> {
  * Use for the location picker on the add-part form.
  */
 export async function listLocations(): Promise<LocationNode[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const result = await supabase
     .from("location_paths")
     .select("*")
@@ -80,13 +97,13 @@ export async function listLocations(): Promise<LocationNode[]> {
 }
 
 export async function listCategories(): Promise<Category[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const result = await supabase.from("categories").select("*").order("name");
   return unwrap(result, "Failed to load categories");
 }
 
 export async function listRequests(status?: RequestStatus): Promise<PartRequest[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const query = supabase
     .from("part_requests")
     .select("*")
@@ -97,7 +114,7 @@ export async function listRequests(status?: RequestStatus): Promise<PartRequest[
 }
 
 export async function listRecentlyViewed(limit = 3): Promise<RecentPart[]> {
-  const supabase = getServerClient();
+  const supabase = await client();
   const result = await supabase
     .from("recently_viewed_parts")
     .select("*")
