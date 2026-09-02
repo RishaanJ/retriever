@@ -5,45 +5,44 @@ import type { Database } from "./database.types";
 
 export type Client = SupabaseClient<Database>;
 
+/**
+ * The database is not reachable from the browser. Row level security is on
+ * with no policies, so the public anon key is refused outright; the server
+ * connects with the service role key, which bypasses RLS.
+ *
+ * Neither variable carries a NEXT_PUBLIC_ prefix, and that is load-bearing:
+ * the prefix is what inlines a value into the client bundle, and the service
+ * role key grants unrestricted access to every table. It must only ever be
+ * read on the server.
+ */
 function credentials() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !anonKey) {
+  if (!url || !serviceRoleKey) {
     throw new Error(
       "Supabase is not configured. Copy .env.example to .env.local and fill in " +
-        "NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
     );
   }
 
-  return { url, anonKey };
+  return { url, serviceRoleKey };
 }
-
-// Retriever has no sign-in yet, so there is no session to persist or refresh
-// and the same anon credentials work on both sides of the network boundary.
-// Session persistence is switched off so the browser client does not write
-// empty auth state into the shared workshop laptops' local storage.
-const options = {
-  auth: { persistSession: false, autoRefreshToken: false },
-} as const;
 
 /**
  * Client for Server Components and Server Actions, memoised per request.
+ *
+ * There is no browser counterpart on purpose: exporting one would invite a
+ * client component to import it and leak the key.
  */
 export const getServerClient = cache((): Client => {
-  const { url, anonKey } = credentials();
-  return createClient<Database>(url, anonKey, options);
+  const { url, serviceRoleKey } = credentials();
+
+  return createClient<Database>(url, serviceRoleKey, {
+    auth: {
+      // A service role connection has no user session to keep alive.
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
 });
-
-let browserClient: Client | undefined;
-
-/**
- * Client for Client Components. Created once per browser session.
- */
-export function getBrowserClient(): Client {
-  if (!browserClient) {
-    const { url, anonKey } = credentials();
-    browserClient = createClient<Database>(url, anonKey, options);
-  }
-  return browserClient;
-}

@@ -58,3 +58,8 @@ next-env.d.ts
 
 # os
 Thumbs.db
+
+# Added by `vercel link`. Kept, but re-exempt the committed template: this
+# pattern is the last match for .env.example and would otherwise drop it.
+.env*
+!.env.example
